@@ -4,7 +4,8 @@ import com.typesafedev.ordering.system.domain.application_service.dto.create.Ord
 import com.typesafedev.ordering.system.domain.application_service.dto.create.OrderCommands.{CreateOrderCommand, CreateOrderResponse, OrderAddress, OrderItem}
 import com.typesafedev.ordering.system.domain.application_service.dto.track.TrackOrder
 import com.typesafedev.ordering.system.domain.application_service.dto.track.TrackOrder.{TrackOrderQuery, TrackOrderResponse}
-import com.typesafedev.ordering.system.domain.application_service.ports.input.service.Service.OrderServiceError.{CustomerNotFound, FailToSaveOrder, InvalidOrder, RestaurantNotFound}
+import com.typesafedev.ordering.system.domain.application_service.ports.input.service.Service.OrderServiceError.{CustomerNotFound, FailToPublishCreateOrderEvent, FailToSaveOrder, InvalidOrder, RestaurantNotFound}
+import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.message.publisher.payment.OrderCreatedPaymentRequestMessagePublisher
 import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.{CustomerRepository, OrderRepository, RestaurantRepository}
 import com.typesafedev.ordering.system.domain.core.Domain.AggregateRoot.{Customer, Order, Restaurant}
 import com.typesafedev.ordering.system.domain.core.Domain.BaseEntity.Product
@@ -21,6 +22,7 @@ object Service {
     final case class RestaurantNotFound(message: String) extends OrderServiceError
     final case class InvalidOrder(message: String) extends OrderServiceError
     final case class FailToSaveOrder(message: String) extends OrderServiceError
+    final case class FailToPublishCreateOrderEvent(message: String) extends OrderServiceError
     // TODO
   }
 
@@ -29,7 +31,7 @@ object Service {
     def trackOrder(query: TrackOrderQuery): ZIO[Any, OrderServiceError, TrackOrderResponse]
   }
 
-  final case class OrderApplicationServiceImpl(orderRepository: OrderRepository, customerRepository: CustomerRepository, restaurantRepository: RestaurantRepository) extends OrderApplicationService {
+  final case class OrderApplicationServiceImpl(orderRepository: OrderRepository, customerRepository: CustomerRepository, restaurantRepository: RestaurantRepository, orderCreatedEventPublisher: OrderCreatedPaymentRequestMessagePublisher) extends OrderApplicationService {
     override def createOrder(command: OrderCommands.CreateOrderCommand):  ZIO[Any, OrderServiceError, CreateOrderResponse] = {
       val orderId: OrderId = OrderId(UUID.randomUUID())
       val transformOrderItemToOrderItemEntity = commandOrderItemToOrderItemEntity(orderId)_
@@ -42,7 +44,10 @@ object Service {
          orderId = orderId)
         OrderDomainService.validateAndInitiateOrder(order, restaurant) match {
           case Left(value) => ZIO.fail(InvalidOrder(value.map(_.message).mkString("\n")))
-          case Right(value) => orderRepository.save(value.order).mapError(err => FailToSaveOrder(err.getMessage))
+          case Right(value) =>
+            orderRepository.save(value.order).mapError(err => FailToSaveOrder(err.getMessage)).flatMap { order =>
+            orderCreatedEventPublisher.publish(value).mapBoth(err => FailToPublishCreateOrderEvent(err.getMessage), _ => order)
+          }
         }
 
       }.map { order =>
@@ -56,7 +61,19 @@ object Service {
 
     }
 
-    override def trackOrder(query: TrackOrder.TrackOrderQuery): ZIO[Any, OrderServiceError, TrackOrderResponse] = ???
+    override def trackOrder(query: TrackOrder.TrackOrderQuery): ZIO[Any, OrderServiceError, TrackOrderResponse] = {
+      orderRepository.findByTrackingId(query.trackOrderId)
+        .mapError(err => InvalidOrder(s"Order could not be found using the tracking id: ${query.trackOrderId}. Details: ${err.getMessage}"))
+        .flatMap {
+          case Some(value) =>  ZIO.succeed(TrackOrderResponse(
+            query.trackOrderId,
+            value.orderStatus,
+            failures = List.empty
+          ))
+          case None => ZIO.fail( InvalidOrder(s"Order could not be found using the tracking id: ${query.trackOrderId}."))
+        }
+
+    }
 
     private def checkCustomer(customerId: CustomerId): ZIO[Any, OrderServiceError,  Customer] = {
       customerRepository
