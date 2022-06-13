@@ -4,7 +4,7 @@ import com.typesafedev.ordering.system.domain.core.Domain.{CustomerId, Money, Or
 
 object OrderCommands {
 
-  final case class OrderItem(productId: ProductId, quantity: Integer, price: Money, subTotal: Money)
+  final case class OrderItem(productId: ProductId, quantity: Int, price: Money, subTotal: Money)
   final case class OrderAddress(street: String, postalCode: String, city: String)
 
   final case class CreateOrderCommand(

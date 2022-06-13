@@ -1,9 +1,9 @@
 package com.typesafedev.ordering.system.domain.core
 
 import com.typesafedev.ordering.system.domain.core.Domain.BaseEntity.OrderItem
-import com.typesafedev.ordering.system.domain.core.Domain.DomainError.{OrderPriceCheckingFailed, RestaurantIsNotActive}
-import com.typesafedev.ordering.system.domain.core.events.Events.DomainEvent.{OrderCancelledEvent, OrderCreatedEvent, OrderPaidEvent}
-import zio.prelude.{Newtype, Validation}
+import com.typesafedev.ordering.system.domain.core.Domain.DomainError._
+import com.typesafedev.ordering.system.domain.core.events.Events.DomainEvent.{OrderCreatedEvent, OrderPaidEvent}
+import zio.prelude.{Newtype, Subtype}
 
 import java.time.{ZoneId, ZonedDateTime}
 import java.util.UUID
@@ -78,6 +78,9 @@ object Domain {
     final case class OrderTotalPriceCheckingFailed(message: String) extends DomainError
     final case class OrderPriceCheckingFailed(message: String) extends DomainError
     final case class RestaurantIsNotActive(message: String) extends DomainError
+    final case class OrderIsNotInPendingState(message: String) extends DomainError
+    final case class OrderIsNotInPaidState(message: String) extends DomainError
+    final case class OrderIsNotInRightStateForCanceling(message: String) extends DomainError
   }
 
   sealed trait BaseEntity
@@ -190,10 +193,31 @@ object Domain {
       _ <- OrderValidation.isOrderValid(updatedOrder)
     } yield OrderCreatedEvent(updatedOrder, ZonedDateTime.now(ZoneId.of("UTC")))
 
-    def payOrder(order: Order): Either[List[DomainError], OrderPaidEvent] =  ???
-    def approveOrder(order: Order): Either[List[DomainError], Order] =  ???
-    def cancelOrderPayment(order: Order, failures: List[DomainError]): Either[List[DomainError], OrderCancelledEvent] = ???
-    def cancelOrder(order: Order, failures: List[DomainError]): Either[List[DomainError], Order] = ???
+    def payOrder(order: Order): Either[List[DomainError], OrderPaidEvent] =  {
+      if (order.orderStatus == OrderStatus.PENDING) {
+        Right(OrderPaidEvent(order.copy(orderStatus = OrderStatus.PAID), ZonedDateTime.now(ZoneId.of("UTC"))))
+      } else Left(List(OrderIsNotInPendingState("Order is not in PENDING state.")))
+    }
+    def approveOrder(order: Order): Either[List[DomainError], Order] =  {
+      if (order.orderStatus == OrderStatus.PAID) {
+        Right(order.copy(orderStatus = OrderStatus.APPROVED))
+      } else {
+        Left(List(OrderIsNotInPaidState("Order is not in PAID state.")))
+      }
+
+    }
+
+    def initCancel(order: Domain.AggregateRoot.Order):  Either[List[DomainError], Order] = {
+      if (order.orderStatus == OrderStatus.PAID) {
+         Right(order.copy(orderStatus = OrderStatus.CANCELLING))
+      } else Left(List(OrderIsNotInPaidState("Order is not in PAID state.")))
+    }
+
+    def cancel(order: Order): Either[List[DomainError], Order] = {
+      if (order.orderStatus == OrderStatus.CANCELLING || order.orderStatus == OrderStatus.PENDING ) {
+        Right(order.copy(orderStatus = OrderStatus.CANCELLED))
+      } else Left(List(OrderIsNotInRightStateForCanceling("Order could not be Cancel.")))
+    }
 
 
     private def validateRestaurant(restaurant: Restaurant): Either[List[DomainError], Restaurant] = if (restaurant.active)

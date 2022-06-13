@@ -5,25 +5,26 @@ import com.typesafedev.ordering.system.domain.application_service.dto.create.Ord
 import com.typesafedev.ordering.system.domain.application_service.dto.track.TrackOrder
 import com.typesafedev.ordering.system.domain.application_service.dto.track.TrackOrder.{TrackOrderQuery, TrackOrderResponse}
 import com.typesafedev.ordering.system.domain.application_service.ports.input.service.Service.OrderServiceError.{CustomerNotFound, FailToPublishCreateOrderEvent, FailToSaveOrder, InvalidOrder, RestaurantNotFound}
-import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.message.publisher.payment.OrderCreatedPaymentRequestMessagePublisher
-import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.{CustomerRepository, OrderRepository, RestaurantRepository}
+import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.Repositories._
+import com.typesafedev.ordering.system.domain.application_service.ports.output.repository.message.publisher.payment.Payment.OrderCreatedPaymentRequestMessagePublisher
 import com.typesafedev.ordering.system.domain.core.Domain.AggregateRoot.{Customer, Order, Restaurant}
 import com.typesafedev.ordering.system.domain.core.Domain.BaseEntity.Product
 import com.typesafedev.ordering.system.domain.core.Domain.{BaseEntity, CustomerId, OrderDomainService, OrderId, OrderItemId, RestaurantId, StreetAddress, StreetAddressId}
-import zio.ZIO
+import zio.{ULayer, ZIO, ZLayer}
 
 import java.util.UUID
 
 object Service {
 
-  sealed trait OrderServiceError
+  sealed trait OrderServiceError {
+    val message: String
+  }
   object OrderServiceError {
     final case class CustomerNotFound(message: String) extends OrderServiceError
     final case class RestaurantNotFound(message: String) extends OrderServiceError
     final case class InvalidOrder(message: String) extends OrderServiceError
     final case class FailToSaveOrder(message: String) extends OrderServiceError
     final case class FailToPublishCreateOrderEvent(message: String) extends OrderServiceError
-    // TODO
   }
 
   trait OrderApplicationService {
@@ -31,7 +32,17 @@ object Service {
     def trackOrder(query: TrackOrderQuery): ZIO[Any, OrderServiceError, TrackOrderResponse]
   }
 
-  final case class OrderApplicationServiceImpl(orderRepository: OrderRepository, customerRepository: CustomerRepository, restaurantRepository: RestaurantRepository, orderCreatedEventPublisher: OrderCreatedPaymentRequestMessagePublisher) extends OrderApplicationService {
+  object OrderApplicationService {
+    val live: ZLayer[OrderRepository with CustomerRepository with RestaurantRepository with OrderCreatedPaymentRequestMessagePublisher, Nothing, OrderApplicationServiceLive] = ZLayer.fromFunction(OrderApplicationServiceLive(_, _, _, _))
+
+    def createOrder(command: OrderCommands.CreateOrderCommand):  ZIO[OrderApplicationServiceLive, OrderServiceError, CreateOrderResponse] =
+      ZIO.serviceWithZIO[OrderApplicationServiceLive](_.createOrder(command))
+
+    def trackOrder(query: TrackOrder.TrackOrderQuery): ZIO[OrderApplicationServiceLive, OrderServiceError, TrackOrderResponse] =
+      ZIO.serviceWithZIO[OrderApplicationServiceLive](_.trackOrder(query))
+  }
+
+  final case class OrderApplicationServiceLive(orderRepository: OrderRepository, customerRepository: CustomerRepository, restaurantRepository: RestaurantRepository, orderCreatedEventPublisher: OrderCreatedPaymentRequestMessagePublisher) extends OrderApplicationService {
     override def createOrder(command: OrderCommands.CreateOrderCommand):  ZIO[Any, OrderServiceError, CreateOrderResponse] = {
       val orderId: OrderId = OrderId(UUID.randomUUID())
       val transformOrderItemToOrderItemEntity = commandOrderItemToOrderItemEntity(orderId)_
