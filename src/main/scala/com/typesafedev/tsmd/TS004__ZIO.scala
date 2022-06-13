@@ -10,9 +10,9 @@ object TS004__ZIO  extends ZIOAppDefault {
 
   // ZIO[-R, +E, +A]
 
-  val s1 = ZIO.succeed(42)
+  val s1: ZIO[Any, Nothing, Int] = ZIO.succeed(42)
 
-  val failure = ZIO.fail("Boom !")
+  val failure: IO[String, Nothing] = ZIO.fail("Boom !")
 
   val option: IO[Option[Nothing], Int] = ZIO.fromOption(Some(2))
 
@@ -26,7 +26,7 @@ object TS004__ZIO  extends ZIOAppDefault {
   // Side effects
 
   // Synchronous side effects
-  val readLine = ZIO.attempt(StdIn.readLine())
+  val readLine: Task[String] = ZIO.attempt(StdIn.readLine())
   def printLine(line: String) = ZIO.attempt(println(line))
 
 

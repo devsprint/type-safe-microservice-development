@@ -50,7 +50,7 @@ object Service {
         val order = Order(command.customerId, restaurant.restaurantId, deliveryAddress = orderAddressToStreetAddress(command.address),
           price = command.price,
           orderItems = command.items.zipWithIndex.map {
-            case (oi, index) => transformOrderItemToOrderItemEntity(oi).copy(orderItemId = OrderItemId(index))
+            case (oi, index) => transformOrderItemToOrderItemEntity(oi).copy(orderItemId = OrderItemId.unsafeMake(index.toLong))
           },
          orderId = orderId)
         OrderDomainService.validateAndInitiateOrder(order, restaurant) match {

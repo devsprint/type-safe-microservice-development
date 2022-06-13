@@ -3,6 +3,7 @@ package com.typesafedev.ordering.system.domain.core
 import com.typesafedev.ordering.system.domain.core.Domain.BaseEntity.OrderItem
 import com.typesafedev.ordering.system.domain.core.Domain.DomainError._
 import com.typesafedev.ordering.system.domain.core.events.Events.DomainEvent.{OrderCreatedEvent, OrderPaidEvent}
+import zio.prelude.Assertion.greaterThanOrEqualTo
 import zio.prelude.{Newtype, Subtype}
 
 import java.time.{ZoneId, ZonedDateTime}
@@ -24,7 +25,12 @@ object Domain {
   object StreetAddressId extends Newtype[UUID]
   type StreetAddressId = StreetAddressId.Type
 
-  object OrderItemId extends Newtype[Long]
+  object OrderItemId extends Subtype[Long] {
+    override def assertion =   assert {
+      greaterThanOrEqualTo(0L)
+    }
+    def unsafeMake(value: Long) = wrap(value)
+  }
   type OrderItemId = OrderItemId.Type
 
   object TrackingId extends Newtype[UUID]

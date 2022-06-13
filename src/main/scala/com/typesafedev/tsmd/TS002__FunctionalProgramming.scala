@@ -13,6 +13,7 @@ object TS002__FunctionalProgramming {
   def main(args: Array[String]): Unit = {
     println(getMonthNameByIndex(1))
     println(getMonthNameByIndex2(100))
+    println(getMonthNameByIndex2(12))
 
   }
 
@@ -20,7 +21,7 @@ object TS002__FunctionalProgramming {
     val months = Array("January", "February", "March", "April", "May", "June", "July",
       "August", "September", "October", "November", "December")
 
-    if (index >=0 && index < months.length)
+    if (index >0 && index <= months.length)
        Some(months(index -1))
     else
       None

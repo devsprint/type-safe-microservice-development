@@ -38,6 +38,6 @@ object TS005__ZIO_HTTP extends ZIOAppDefault {
 
   // Run it like any simple app
   override def run: ZIO[Any with ZIOAppArgs with Scope, Any, Any] =
-    Server.start(8090, app @@ middlewares).provide(Console.live, Clock.live)
+    Server.start(8091, app @@ middlewares).provide(Console.live, Clock.live)
 
 }
